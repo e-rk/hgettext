@@ -43,6 +43,9 @@ foreign import ccall unsafe "libintl.h bindtextdomain" c_bindtextdomain
 foreign import ccall unsafe "libintl.h textdomain" c_textdomain
     :: CString -> IO CString
 
+foreign import ccall unsafe "libintl.h bind_textdomain_codeset" c_bind_textdomain_codeset
+    :: CString -> CString -> IO CString
+
 fromCString :: CString -> IO (Maybe String)
 fromCString x | x == nullPtr = return Nothing
               | otherwise = peekCString x >>= return . Just
