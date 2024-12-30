@@ -184,3 +184,14 @@ textDomain :: Maybe String      -- ^ domain name, if 'Nothing' than returns
 textDomain domainname =
     withCStringMaybe domainname $ \domain ->
         c_textdomain domain >>= fromCStringError "textDomain fails"
+
+-- | 'bindTextDomainCodepage' sets domain codepage for future 'getText' call
+--
+bindTextDomainCodepage :: String                -- ^ domain name
+                       -> Maybe String          -- ^ locale codepage or 'Nothing' to return
+                                                -- base directory for domain
+                       -> IO (Maybe String)     -- ^ return value
+bindTextDomainCodepage domainname dirname =
+  withCString domainname $ \domain ->
+      withCStringMaybe dirname $ \dir ->
+          c_bind_textdomain_codeset domain dir >>= fromCString
