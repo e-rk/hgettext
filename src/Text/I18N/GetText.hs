@@ -8,7 +8,8 @@ module Text.I18N.GetText (
                           dcGetText,
                           dcnGetText,
                           bindTextDomain,
-                          textDomain
+                          textDomain,
+                          bindTextDomainCodepage
                          ) where
 
 import           Data.Maybe              (fromMaybe)
