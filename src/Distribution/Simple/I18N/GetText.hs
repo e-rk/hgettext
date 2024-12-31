@@ -111,14 +111,17 @@ installGetTextHooks uh =
     uh { confHook = \a b -> do
            lbi <- (confHook uh) a b
            return (updateLocalBuildInfo lbi)
+       , buildHook = \pd lbi _uh bflags -> do
+           buildHook uh pd lbi _uh bflags
+           buildPOFiles (fromFlagOrDefault maxBound (buildVerbosity bflags)) lbi
 
        , postInst = \args iflags pd lbi -> do
-           postInst uh args iflags pd lbi
-           installPOFiles (fromFlagOrDefault maxBound (installVerbosity iflags)) lbi
+           _pd <- installPD (fromFlagOrDefault maxBound (installVerbosity iflags)) lbi pd
+           postInst uh args iflags _pd lbi
 
-       , postCopy = \args cflags pd lbi -> do
-           postCopy uh args cflags pd lbi
-           installPOFiles (fromFlagOrDefault maxBound (copyVerbosity cflags)) lbi
+       , copyHook = \pd lbi _uh cflags -> do
+           _pd <- installPD (fromFlagOrDefault maxBound (copyVerbosity cflags)) lbi pd
+           copyHook uh _pd lbi _uh cflags
        }
 
 
@@ -133,18 +136,32 @@ updateLocalBuildInfo l =
         domMS = formatMacro catDef tar
     in appendCPPOptions [domMS,catMS] $ appendExtension [EnableExtension CPP] l
 
-installPOFiles :: Verbosity -> LocalBuildInfo -> IO ()
-installPOFiles verb l =
+targetBuildDir :: LocalBuildInfo -> FilePath -> FilePath
+targetBuildDir l file = 
+    let bdir = buildDir l
+        sMap = getCustomFields l
+        dom = getDomainNameDefault sMap (getPackageName l)
+        fname = takeFileName file
+        bname = takeBaseName fname
+    in "locale" </> bname </> "LC_MESSAGES"
+
+targetFile :: LocalBuildInfo -> FilePath
+targetFile l =
+    let sMap = getCustomFields l
+        dom = getDomainNameDefault sMap (getPackageName l)
+    in dom <.> ".mo"
+
+buildPOFiles :: Verbosity -> LocalBuildInfo -> IO ()
+buildPOFiles verb l =
     let sMap = getCustomFields l
         destDir = targetDataDir l
         dom = getDomainNameDefault sMap (getPackageName l)
         installFile file = do
-          let fname = takeFileName file
-          let bname = takeBaseName fname
-          let targetDir = destDir </> bname </> "LC_MESSAGES"
+          let targetDir = targetBuildDir l file
+          let fname = targetFile l
           -- ensure we have directory destDir/{loc}/LC_MESSAGES
           createDirectoryIfMissing True targetDir
-          ph <- runProcess "msgfmt" [ "--output-file=" ++ (targetDir </> dom <.> "mo"), file ]
+          ph <- runProcess "msgfmt" [ "--output-file=" ++ (targetDir </> fname), file ]
                            Nothing Nothing Nothing Nothing Nothing
           ec <- waitForProcess ph
           case ec of
@@ -157,6 +174,14 @@ installPOFiles verb l =
       -- destDir/{loc}/LC_MESSAGES/dom.mo
       -- with the 'msgfmt' tool
       mapM_ installFile filelist
+
+installPD :: Verbosity -> LocalBuildInfo -> PackageDescription -> IO PackageDescription
+installPD verb l pd = do 
+    let sMap = getCustomFields l
+    let tfile file = (targetBuildDir l file) </> (targetFile l)
+    filelist <- getPoFilesDefault verb l sMap
+    let files = map tfile filelist
+    return $ pd { dataFiles = files ++ dataFiles pd }
 
 forBuildInfo :: LocalBuildInfo -> (BuildInfo -> BuildInfo) -> LocalBuildInfo
 forBuildInfo l f =
@@ -190,7 +215,7 @@ targetDataDir l =
         prefix' = prefix dirTmpls
         data' = datadir dirTmpls
         dataEx = I.fromPathTemplate $ I.substPathTemplate [(PrefixVar, prefix')] data'
-    in dataEx ++ "/locale"
+    in dataEx </> "locale"
 
 getPackageName :: LocalBuildInfo -> String
 getPackageName = fromPackageName . packageName . localPkgDescr
